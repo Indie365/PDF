@@ -152,6 +152,7 @@
   max-width: 100%;
   max-height: 100%;
   border: var(--unfocus-outline);
+  overflow: hidden;
 
   &.draggable.selectedEditor {
     cursor: move;
@@ -454,6 +455,11 @@
   width: auto;
   height: auto;
   touch-action: none;
+  overflow-wrap: break-word; /* Ensure text wraps */
+  resize: both; /* Allow resizing */
+  box-sizing: border-box; /* Include padding and border in element's total width and height */
+  position: relative;
+  border: 1px solid #000; /* Optional: to visually see the annotation box */
 }
 
 .annotationEditorLayer .freeTextEditor .internal {
@@ -461,10 +467,16 @@
   border: none;
   inset: 0;
   overflow: visible;
-  white-space: nowrap;
-  font: 10px sans-serif;
+  white-space: pre-wrap; /* Ensure text wraps */
+  font: calc(10px * var(--scale-factor)) sans-serif; /* Adjust font size according to scale factor */
   line-height: var(--freetext-line-height);
   user-select: none;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden; 
+  white-space: pre-wrap;
+  padding: 0.5em; 
 }
 
 .annotationEditorLayer .freeTextEditor .overlay {
@@ -476,7 +488,7 @@
   height: 100%;
 }
 
-.annotationEditorLayer freeTextEditor .overlay.enabled {
+.annotationEditorLayer .freeTextEditor .overlay.enabled {
   display: block;
 }
 
@@ -510,77 +522,75 @@
 .annotationEditorLayer .stampEditor {
   width: auto;
   height: auto;
-
-  canvas {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    top: 0;
-    left: 0;
-  }
 }
 
-.annotationEditorLayer {
-  :is(.freeTextEditor, .inkEditor, .stampEditor) {
-    & > .resizers {
-      position: absolute;
-      inset: 0;
+.annotationEditorLayer .stampEditor canvas {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  top: 0;
+  left: 0;
+}
 
-      &.hidden {
-        display: none;
-      }
 
-      & > .resizer {
-        width: var(--resizer-size);
-        height: var(--resizer-size);
-        background: content-box var(--resizer-bg-color);
-        border: var(--focus-outline-around);
-        border-radius: 2px;
-        position: absolute;
+.annotationEditorLayer :is(.freeTextEditor, .inkEditor, .stampEditor) > .resizers {
+  position: absolute;
+  inset: 0;
 
-        &.topLeft {
-          top: var(--resizer-shift);
-          left: var(--resizer-shift);
-        }
+  &.hidden {
+    display: none;
+  }
 
-        &.topMiddle {
-          top: var(--resizer-shift);
-          left: calc(50% + var(--resizer-shift));
-        }
+  > .resizer {
+    width: var(--resizer-size);
+    height: var(--resizer-size);
+    background: content-box var(--resizer-bg-color);
+    border: var(--focus-outline-around);
+    border-radius: 2px;
+    position: absolute;
 
-        &.topRight {
-          top: var(--resizer-shift);
-          right: var(--resizer-shift);
-        }
+    &.topLeft {
+      top: var(--resizer-shift);
+      left: var(--resizer-shift);
+    }
 
-        &.middleRight {
-          top: calc(50% + var(--resizer-shift));
-          right: var(--resizer-shift);
-        }
+    &.topMiddle {
+      top: var(--resizer-shift);
+      left: calc(50% + var(--resizer-shift));
+    }
 
-        &.bottomRight {
-          bottom: var(--resizer-shift);
-          right: var(--resizer-shift);
-        }
+    &.topRight {
+      top: var(--resizer-shift);
+      right: var(--resizer-shift);
+    }
 
-        &.bottomMiddle {
-          bottom: var(--resizer-shift);
-          left: calc(50% + var(--resizer-shift));
-        }
+    &.middleRight {
+      top: calc(50% + var(--resizer-shift));
+      right: var(--resizer-shift);
+    }
 
-        &.bottomLeft {
-          bottom: var(--resizer-shift);
-          left: var(--resizer-shift);
-        }
+    &.bottomRight {
+      bottom: var(--resizer-shift);
+      right: var(--resizer-shift);
+    }
 
-        &.middleLeft {
-          top: calc(50% + var(--resizer-shift));
-          left: var(--resizer-shift);
-        }
-      }
+    &.bottomMiddle {
+      bottom: var(--resizer-shift);
+      left: calc(50% + var(--resizer-shift));
+    }
+
+    &.bottomLeft {
+      bottom: var(--resizer-shift);
+      left: var(--resizer-shift);
+    }
+
+    &.middleLeft {
+      top: calc(50% + var(--resizer-shift));
+      left: var(--resizer-shift);
     }
   }
+}
 
   &[data-main-rotation="0"]
     :is([data-editor-rotation="0"], [data-editor-rotation="180"]),
