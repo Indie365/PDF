@@ -268,7 +268,9 @@ export class CanvasRecorder {
             // console.warn(`Untracked call to ${name}`);
             this.#unknown();
           }
-          if (deps) this.#registerDependencies(deps);
+          if (deps) {
+            this.#registerDependencies(deps);
+          }
           return this.#ctx[name](...args);
         };
       }

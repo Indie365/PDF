@@ -58,14 +58,6 @@ const MAX_SIZE_TO_COMPILE = 1000;
 
 const FULL_CHUNK_HEIGHT = 16;
 
-function allValues(obj) {
-  const values = [];
-  for (const key in obj) {
-    values.push(obj[key]);
-  }
-  return values;
-}
-
 /**
  * Overrides certain methods on a 2d ctx so that when they are called they
  * will also call the same method on the destCtx. The methods that are
@@ -619,7 +611,9 @@ class CanvasExtraStateDependenciesRecorder extends CanvasExtraState {
   }
 
   takeDependencies() {
-    if (this._dependencies.size === 0) return;
+    if (this._dependencies.size === 0) {
+      return undefined;
+    }
 
     const arr = Array.from(this._dependencies);
     this._dependencies.clear();
