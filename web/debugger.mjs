@@ -522,8 +522,8 @@ class Stepper {
 
     this.hoverStyle.innerText = `#${this.panel.id} ${cssSelector} { background-color: rgba(0, 0, 0, 0.1); }`;
 
-    if (group.data.dependencies) {
-      const selector = group.data.dependencies
+    if (group.dependencies.length > 0) {
+      const selector = group.dependencies
         .map(idx => `#${this.panel.id} tr[data-idx="${idx}"]`)
         .join(", ");
       this.hoverStyle.innerText += `${selector} { background-color: rgba(0, 255, 255, 0.1); }`;
