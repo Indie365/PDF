@@ -468,7 +468,9 @@ function compileType3Glyph(imgData) {
 }
 
 class CanvasExtraState {
-  constructor(width, height) {
+  constructor(width, height, preInit) {
+    preInit?.(this);
+
     // Are soft masks and alpha values shapes or opacities?
     this.alphaIsShape = false;
     this.fontSize = 0;
@@ -501,15 +503,12 @@ class CanvasExtraState {
     this.activeSMask = null;
     this.transferMaps = "none";
 
-    this.dependencyIndexes = Object.create(null);
-
     this.startNewPathAndClipBox([0, 0, width, height]);
   }
 
   clone() {
     const clone = Object.create(this);
     clone.clipBox = this.clipBox.slice();
-    clone.dependencyIndexes = Object.create(this.dependencyIndexes);
     return clone;
   }
 
@@ -595,6 +594,67 @@ class CanvasExtraState {
       this.clipBox,
       this.getPathBoundingBox(pathType, transform)
     );
+  }
+
+  takeDependencies() {}
+
+  setNextCommandsId() {}
+}
+
+class CanvasExtraStateDependenciesRecorder extends CanvasExtraState {
+  constructor(width, height) {
+    super(width, height, self => {
+      self._dependencies = new Set();
+      self._dependencyIds = Object.create(null);
+      self._storage = {};
+      self._nextCommandsIdRef = { value: -1 };
+    });
+  }
+
+  clone() {
+    const clone = super.clone();
+    clone._dependencyIds = Object.create(this._dependencyIds);
+    clone._storage = Object.create(this._storage);
+    return clone;
+  }
+
+  takeDependencies() {
+    if (this._dependencies.size === 0) return;
+
+    const arr = Array.from(this._dependencies);
+    this._dependencies.clear();
+    return arr;
+  }
+
+  setNextCommandsId(id) {
+    this._nextCommandsIdRef.value = id;
+  }
+
+  static {
+    const trackedNames = [
+      "fillAlpha",
+      "strokeAlpha",
+      "lineWidth",
+      "activeSMask",
+      "transferMaps",
+    ];
+
+    for (const name of trackedNames) {
+      Object.defineProperty(this.prototype, name, {
+        enumerable: true,
+        get() {
+          const id = this._dependencyIds[name];
+          if (id !== undefined && id !== -1) {
+            this._dependencies.add(id);
+          }
+          return this._storage[name];
+        },
+        set(v) {
+          this._storage[name] = v;
+          this._dependencyIds[name] = this._nextCommandsIdRef.value;
+        },
+      });
+    }
   }
 }
 
@@ -845,10 +905,11 @@ class CanvasGraphics {
     pageColors
   ) {
     this.ctx = canvasCtx;
-    this.current = new CanvasExtraState(
-      this.ctx.canvas.width,
-      this.ctx.canvas.height
-    );
+    this.current = new (
+      canvasCtx instanceof CanvasRecorder
+        ? CanvasExtraStateDependenciesRecorder
+        : CanvasExtraState
+    )(this.ctx.canvas.width, this.ctx.canvas.height);
     this.stateStack = [];
     this.pendingClip = null;
     this.pendingEOFill = false;
@@ -977,11 +1038,19 @@ class CanvasGraphics {
       fnArgs = argsArray[i];
 
       if (fnId !== OPS.dependency) {
+        CanvasRecorder.setNextCommandsId(this.ctx, i);
+        this.current.setNextCommandsId(i);
+
         if (fnArgs === null) {
           this[fnId](i);
         } else {
           this[fnId](i, ...fnArgs);
         }
+
+        CanvasRecorder.addExtraDependencies(
+          this.ctx,
+          this.current.takeDependencies()
+        );
       } else {
         for (const depObjId of fnArgs) {
           const objsPool = depObjId.startsWith("g_") ? commonObjs : objs;
@@ -1301,20 +1370,14 @@ class CanvasGraphics {
     }
     this.current.lineWidth = width;
     this.ctx.lineWidth = width;
-
-    this.current.dependencyIndexes.lineWidth = opIdx;
   }
 
   setLineCap(opIdx, style) {
     this.ctx.lineCap = LINE_CAP_STYLES[style];
-
-    this.current.dependencyIndexes.lineCap = opIdx;
   }
 
   setLineJoin(opIdx, style) {
     this.ctx.lineJoin = LINE_JOIN_STYLES[style];
-
-    this.current.dependencyIndexes.lineJoin = opIdx;
   }
 
   setMiterLimit(opIdx, limit) {
@@ -1635,6 +1698,13 @@ class CanvasGraphics {
   // Path
   constructPath(opIdx, ops, args, minMax) {
     const ctx = this.ctx;
+
+    CanvasRecorder.startGroupRecording(ctx, {
+      type: "path",
+      startIdx: opIdx,
+      endIdx: -1,
+    });
+
     const current = this.current;
     let x = current.x,
       y = current.y;
@@ -1907,7 +1977,6 @@ class CanvasGraphics {
       type: "text",
       startIdx: opIdx,
       endIdx: -1,
-      dependencies: allValues(this.current.dependencyIndexes),
     });
   }
 
@@ -1926,9 +1995,12 @@ class CanvasGraphics {
       ctx.clip();
     }
 
-    const group = CanvasRecorder.endGroupRecording(this.ctx);
-    if (group) {
-      group.data.endIdx = opIdx;
+    const groupData = CanvasRecorder.endGroupRecording(
+      this.ctx,
+      this.current.takeDependencies()
+    );
+    if (groupData) {
+      groupData.endIdx = opIdx;
     }
 
     ctx.beginPath();
@@ -2447,17 +2519,11 @@ class CanvasGraphics {
   setStrokeColorN(opIdx) {
     this.current.strokeColor = this.getColorN_Pattern(arguments);
     this.current.patternStroke = true;
-
-    this.current.dependencyIndexes.strokeColor = opIdx;
-    this.current.dependencyIndexes.patternStroke = opIdx;
   }
 
   setFillColorN(opIdx) {
     this.current.fillColor = this.getColorN_Pattern(arguments);
     this.current.patternFill = true;
-
-    this.current.dependencyIndexes.fillColor = opIdx;
-    this.current.dependencyIndexes.patternFill = opIdx;
   }
 
   setStrokeRGBColor(opIdx, r, g, b) {
@@ -2467,37 +2533,21 @@ class CanvasGraphics {
       b
     );
     this.current.patternStroke = false;
-
-    this.current.dependencyIndexes.strokeStyle = opIdx;
-    this.current.dependencyIndexes.strokeColor = opIdx;
-    this.current.dependencyIndexes.patternStroke = opIdx;
   }
 
   setStrokeTransparent(opIdx) {
     this.ctx.strokeStyle = this.current.strokeColor = "transparent";
     this.current.patternStroke = false;
-
-    this.current.dependencyIndexes.strokeStyle = opIdx;
-    this.current.dependencyIndexes.strokeColor = opIdx;
-    this.current.dependencyIndexes.patternStroke = opIdx;
   }
 
   setFillRGBColor(opIdx, r, g, b) {
     this.ctx.fillStyle = this.current.fillColor = Util.makeHexColor(r, g, b);
     this.current.patternFill = false;
-
-    this.current.dependencyIndexes.fillStyle = opIdx;
-    this.current.dependencyIndexes.fillColor = opIdx;
-    this.current.dependencyIndexes.patternFill = opIdx;
   }
 
   setFillTransparent(opIdx) {
     this.ctx.fillStyle = this.current.fillColor = "transparent";
     this.current.patternFill = false;
-
-    this.current.dependencyIndexes.fillStyle = opIdx;
-    this.current.dependencyIndexes.fillColor = opIdx;
-    this.current.dependencyIndexes.patternFill = opIdx;
   }
 
   _getPattern(objId, matrix = null) {
@@ -2803,10 +2853,11 @@ class CanvasGraphics {
       }
     }
 
-    this.current = new CanvasExtraState(
-      this.ctx.canvas.width,
-      this.ctx.canvas.height
-    );
+    this.current = new (
+      this.ctx instanceof CanvasRecorder
+        ? CanvasExtraStateDependenciesRecorder
+        : CanvasExtraState
+    )(this.ctx.canvas.width, this.ctx.canvas.height);
 
     this.transform(opIdx, ...transform);
     this.transform(opIdx, ...matrix);
@@ -2976,7 +3027,7 @@ class CanvasGraphics {
 
     this.paintInlineImageXObject(opIdx, imgData);
 
-    CanvasRecorder.endGroupRecording(this.ctx);
+    CanvasRecorder.endGroupRecording(this.ctx, this.current.takeDependencies());
   }
 
   paintImageXObjectRepeat(opIdx, objId, scaleX, scaleY, positions) {
@@ -3216,28 +3267,24 @@ class CanvasGraphics {
       this.pendingClip = null;
     }
 
-    if (clipBox) {
-      CanvasRecorder.pushGroup(
-        ctx,
-        clipBox[0],
-        clipBox[2],
-        clipBox[1],
-        clipBox[3],
-        {
-          type: "path",
-          startIdx: this._pathStartIdx,
-          endIdx: opIdx,
-          dependencies: allValues(this.current.dependencyIndexes),
-        }
-      );
-    } else {
-      // TODO: Get the actual box
-      CanvasRecorder.pushGroup(ctx, 0, Infinity, 0, Infinity, {
-        type: "path",
-        startIdx: this._pathStartIdx,
-        endIdx: opIdx,
-        dependencies: allValues(this.current.dependencyIndexes),
-      });
+    if (ctx instanceof CanvasRecorder) {
+      if (clipBox) {
+        ctx.currentGroup.minX = clipBox[0];
+        ctx.currentGroup.maxX = clipBox[2];
+        ctx.currentGroup.minY = clipBox[1];
+        ctx.currentGroup.maxY = clipBox[3];
+      } else {
+        // TODO: Actually calculate the bounding box.
+        ctx.currentGroup.minX = ctx.currentGroup.minY = 0;
+        ctx.currentGroup.maxX = ctx.currentGroup.maxY = Infinity;
+      }
+    }
+    const groupData = CanvasRecorder.endGroupRecording(
+      ctx,
+      this.current.takeDependencies()
+    );
+    if (groupData) {
+      groupData.endIdx = opIdx;
     }
 
     this.current.startNewPathAndClipBox(this.current.clipBox);
