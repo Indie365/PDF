@@ -205,7 +205,8 @@ export class CanvasRecorder {
           continue;
         }
         if (/^(?:get|set|is)[A-Z]/.test(name)) {
-          // These functions just query or set some state, but perform no drawing
+          // These functions just query or set some state, but perform no
+          // drawing
           CanvasRecorder.prototype[name] = function (...args) {
             return this.#ctx[name](...args);
           };
