@@ -1216,7 +1216,13 @@ class PDFViewer {
     if (this.pagesCount === 0) {
       return;
     }
-    this.update();
+
+    const visible = this._getVisiblePages();
+    for (const { view, visibleArea } of visible.views) {
+      view.updateVisibleArea(visibleArea);
+    }
+
+    this.update(visible);
   }
 
   #scrollIntoView(pageView, pageSpot = null) {
@@ -1643,8 +1649,8 @@ class PDFViewer {
     };
   }
 
-  update() {
-    const visible = this._getVisiblePages();
+  update(currentlyVisible) {
+    const visible = currentlyVisible || this._getVisiblePages();
     const visiblePages = visible.views,
       numVisiblePages = visiblePages.length;
 
