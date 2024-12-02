@@ -536,6 +536,8 @@ class PDFPageView {
     keepXfaLayer = false,
     keepTextLayer = false,
   } = {}) {
+    const keepPdfBugGroups = this.pdfPage?._pdfBug ?? false;
+
     this.cancelRendering({
       keepAnnotationLayer,
       keepAnnotationEditorLayer,
@@ -563,6 +565,9 @@ class PDFPageView {
         case xfaLayerNode:
         case textLayerNode:
           continue;
+      }
+      if (keepPdfBugGroups && node.classList.contains("pdfBugGroupsLayer")) {
+        continue;
       }
       node.remove();
       const layerIndex = this.#layers.indexOf(node);
