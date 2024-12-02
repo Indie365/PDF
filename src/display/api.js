@@ -676,6 +676,26 @@ class PDFDocumentLoadingTask {
     this._worker?.destroy();
     this._worker = null;
   }
+
+  /**
+   * @returns {Promise<Headers | null>}
+   */
+  async getResponseHeaders() {
+    if (typeof PDFJSDev !== "undefined" && !PDFJSDev.test("GENERIC")) {
+      throw new Error("Not implemented: getResponseHeaders");
+    }
+    try {
+      await this.promise;
+    } catch {}
+
+    if (this.destroyed) {
+      throw new Error("LoadingTask destroyed.");
+    }
+    if (!this._transport) {
+      throw new Error("WorkerTransport unset.");
+    }
+    return this._transport._responseHeaders;
+  }
 }
 
 /**
@@ -2451,6 +2471,23 @@ class WorkerTransport {
     this.downloadInfoCapability = Promise.withResolvers();
 
     this.setupMessageHandler();
+
+    if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
+      // NOTE: This getter should *not* be invoked until after
+      // the `IPDFStreamReader.headersReady`-promise has settled.
+      Object.defineProperty(this, "_responseHeaders", {
+        get() {
+          if (!networkStream) {
+            return null;
+          }
+          assert(this._fullReader, "No `IPDFStreamReader`-instance available.");
+
+          const headers = this._fullReader.responseHeaders;
+          // Always create a copy of the *internal* response headers.
+          return headers ? new Headers(headers) : null;
+        },
+      });
+    }
 
     if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) {
       // For testing purposes.
